@@ -120,8 +120,7 @@ function renderSources(r) {
 
 function renderML(r) {
   const summary = $("ml-summary");
-  const feats = $("features");
-  clear(summary); clear(feats);
+  clear(summary);
   const ml = r.ml;
   if (!ml || ml.score === undefined) {
     let msg = "Modèle indisponible.";
@@ -148,8 +147,21 @@ function renderML(r) {
   bar.append(thr);
   summary.append(bar);
 
+}
+
+function renderCollected(r) {
+  const feats = $("collected");
+  clear(feats);
+  const c = r.collected;
+  if (!c || !c.available) {
+    const why = { non_public: "hôte non public : aucune connexion effectuée", disabled: "collecte désactivée sur ce serveur",
+      failed: "la collecte a échoué" }[c && c.reason] || "indisponible";
+    feats.append(el("p", { class: "na", text: `Aucune donnée collectée (${why}).` }));
+    return;
+  }
+  feats.append(el("p", { class: "hint", text: `Collecte effectuée sur l'hôte ${c.host}.` }));
   const groups = new Map();
-  for (const f of ml.features || []) {
+  for (const f of c.features || []) {
     if (!groups.has(f.group)) groups.set(f.group, []);
     groups.get(f.group).push(f);
   }
@@ -215,7 +227,7 @@ function renderNetwork(r) {
 
 function render(r) {
   lastJson = r;
-  renderVerdict(r); renderSources(r); renderML(r); renderUrlAnalysis(r); renderNetwork(r);
+  renderVerdict(r); renderSources(r); renderML(r); renderCollected(r); renderUrlAnalysis(r); renderNetwork(r);
   $("raw").textContent = JSON.stringify(r, null, 2);
   $("error").hidden = true;
   $("result").hidden = false;

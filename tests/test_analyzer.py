@@ -87,6 +87,7 @@ async def test_shortener_queries_original_and_final_and_keeps_worst(monkeypatch)
                 "blocked": None, "error": None}
     monkeypatch.setattr("bt_url.netguard.follow_redirects", follow)
     monkeypatch.setattr("bt_url.analyzer.check_ssl", lambda h: {})
+    monkeypatch.setattr("bt_url.ml.features.collect_all_features", lambda u: {})
 
     src = FakeSource("PhishTank", by_url={"https://evil.test/p": SourceResult(
         "PhishTank", verdict="MALICIOUS", authoritative=True)})
@@ -106,3 +107,65 @@ async def test_ml_disabled_is_reported_as_training_and_verdict_uses_ti_only():
     src = FakeSource("S", default=SourceResult("S", verdict="CLEAN"))
     r = await analyzer([src]).analyze("http://127.0.0.1/x")
     assert r["ml"] == {"enabled": False, "status": "training"}
+
+
+FEATS = {"domain_age_days": 9409, "ttl_A": 180, "ttl_MX": 0, "tld": "org", "url_length": 17, "has_MX": 0}
+
+
+def _public_env(monkeypatch, collect):
+    async def public(host):
+        return True
+    monkeypatch.setattr("bt_url.netguard.host_is_public", public)
+
+    async def no_redirects(url, **k):
+        return {"chain": [url], "final_url": url, "blocked": None, "error": None}
+    monkeypatch.setattr("bt_url.netguard.follow_redirects", no_redirects)
+    monkeypatch.setattr("bt_url.analyzer.check_ssl", lambda h: {"valid": True})
+    monkeypatch.setattr("bt_url.ml.features.collect_all_features", collect)
+
+
+async def test_collected_data_is_exposed_without_any_model(monkeypatch):
+    _public_env(monkeypatch, lambda u: dict(FEATS))
+    r = await analyzer([FakeSource("S")]).analyze("https://example.org/")
+    assert r["ml"] == {"enabled": False, "status": "training"}
+    assert r["collected"]["available"] and r["collected"]["host"] == "example.org"
+    by_name = {f["name"]: f for f in r["collected"]["features"]}
+    assert by_name["domain_age_days"]["value"] == 9409 and not by_name["domain_age_days"]["missing_suspected"]
+    assert by_name["ttl_MX"]["missing_suspected"] is True
+    assert by_name["domain_age_days"]["label"] == "Âge du domaine"
+
+
+async def test_collection_is_not_attempted_for_private_hosts(monkeypatch):
+    def boom(u):
+        raise AssertionError("aucune collecte vers un hôte non public")
+    monkeypatch.setattr("bt_url.ml.features.collect_all_features", boom)
+    r = await analyzer([FakeSource("S")]).analyze("http://127.0.0.1/x")
+    assert r["collected"] == {"available": False, "reason": "non_public"}
+
+
+async def test_collection_failure_does_not_break_the_analysis(monkeypatch):
+    def fail(u):
+        raise RuntimeError("dns down")
+    _public_env(monkeypatch, fail)
+    r = await analyzer([FakeSource("S")]).analyze("https://example.org/")
+    assert r["collected"]["available"] is False and r["collected"]["reason"] == "failed"
+    assert any("Collecte" in n for n in r["notes"]) and r["risk"]["verdict"] == "CLEAN"
+
+
+async def test_collection_can_be_disabled(monkeypatch):
+    _public_env(monkeypatch, lambda u: dict(FEATS))
+    a = URLAnalyzer(Settings(ml_enabled=False, collect_details=False), sources=[FakeSource("S")])
+    r = await a.analyze("https://example.org/")
+    assert r["collected"] == {"available": False, "reason": "disabled"}
+
+
+async def test_model_reuses_collected_features_unless_www_differs(monkeypatch):
+    calls = []
+    _public_env(monkeypatch, lambda u: calls.append(u) or dict(FEATS))
+    ml = FakeML(0.1, "BENIGN")
+    a = URLAnalyzer(Settings(ml_enabled=True), sources=[FakeSource("S")], ml_loader=ml)
+    await a.analyze("https://example.org/")
+    assert calls == ["https://example.org/"]            # une seule collecte
+    calls.clear()
+    await a.analyze("https://www.example.org/")
+    assert calls == ["https://www.example.org/", "https://example.org/"]  # recollecte pour le modèle

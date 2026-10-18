@@ -45,7 +45,7 @@ Seuils : `≥ 0,90` MALICIOUS · `≥ 0,60` HIGH_RISK · `≥ 0,35` SUSPICIOUS.
 | PhishTank | `PHISHTANK_API_KEY` | oui si vérifié et valide |
 | OTX AlienVault | `OTX_API_KEY` | non (indicatif ; domaines en liste blanche OTX ignorés) |
 
-**Sans aucune clé, il n'y a aucune source** : le verdict est alors `UNKNOWN` (ou `SUSPICIOUS` sur indices lexicaux forts).
+**Sans aucune clé, aucune base de menaces n'est interrogée** (les données de la cible sont tout de même collectées) : le verdict est alors `UNKNOWN` (ou `SUSPICIOUS` sur indices lexicaux forts).
 
 ## Service web (API + page)
 
@@ -56,7 +56,7 @@ uvicorn bt_url.api.app:app_factory --factory --port 8000     # puis http://local
 
 | Route | Rôle |
 |---|---|
-| `GET /` | Page web : verdict, raisons, sources, formes de l'URL, certificat TLS, redirections, JSON complet |
+| `GET /` | Page web : verdict, raisons, sources, **données collectées sur la cible** (âge du domaine, DNS, TLS, RDAP, GeoIP…), certificat TLS, redirections, JSON complet |
 | `POST /api/analyze` `{"url": "..."}` | Analyse (JSON). Erreurs : `422` invalide · `429` + `Retry-After` · `503` occupé · `504` délai dépassé |
 | `GET /api/status` | Sources actives, statut du modèle (`training`), quota restant (aucun secret) |
 | `GET /health` | Sonde de vie |
@@ -80,24 +80,44 @@ Page : aucun script/style en ligne, CSP stricte (`default-src 'none'`), DOM cons
 
 ## Déploiement sur un VPS (Docker)
 
-Prérequis : un VPS avec Docker + plugin Compose, un nom de domaine pointant vers lui, ports 80 et 443 ouverts.
+L'image est construite et publiée automatiquement par la CI sur `ghcr.io/tiemtore-dev/bt-url` (workflow *Publish image*,
+linux/amd64 + arm64). Tant que le dépôt est privé, l'image l'est aussi. Le VPS n'a besoin que de **trois fichiers**
+(`docker-compose.yml`, `Caddyfile`, `.env`) : pas de code source, pas de build.
+
+Prérequis : Docker + plugin Compose, un nom de domaine pointant vers le VPS, ports 80 et 443 ouverts.
 
 ```bash
-git clone https://github.com/Tiemtore-dev/bt-url.git && cd bt-url
-cp .env.example .env && nano .env        # DOMAIN + clés API
-docker compose up -d --build             # app + Caddy (HTTPS Let's Encrypt automatique)
+# 1) une seule fois : autoriser le VPS à tirer l'image privée (PAT GitHub avec le droit read:packages)
+echo "$GHCR_TOKEN" | docker login ghcr.io -u Tiemtore-dev --password-stdin
+
+# 2) récupérer les fichiers de déploiement (scp, ou git clone) puis configurer
+cp .env.example .env && nano .env          # DOMAIN + clés API
+
+# 3) déployer
+docker compose pull && docker compose up -d
 docker compose logs -f app
 ```
 
-- `app` : image minimale (aiohttp + FastAPI), utilisateur non root, système de fichiers en lecture seule, toutes les
-  capabilities retirées, 512 Mo max. **Aucun port publié** : seul Caddy est exposé.
-- `caddy` : TLS automatique, limite de corps de requête à 8 Ko, transmet l'IP réelle du client (utilisée par la
-  limitation de débit).
-- Mise à jour : `git pull && docker compose up -d --build`.
-- Test local sans domaine : `DOMAIN=localhost` dans `.env` (certificat interne Caddy).
-- Sans Caddy (derrière votre propre proxy) : `docker build -t bt-url . && docker run -p 8000:8000 --env-file .env bt-url`.
-  Ne mettez `BT_URL_TRUST_PROXY=true` que si un proxy de confiance est **devant** le conteneur, sinon la limitation
-  par IP peut être contournée.
+Mise à jour : `docker compose pull && docker compose up -d`. Alternative sans registre : `docker compose up -d --build`
+depuis un clone du dépôt.
+
+- **Réglages non secrets** (limites de débit, cache, quotas…) : intégrés à l'image avec des valeurs par défaut ;
+  surchargeables dans `.env`. **Les clés API ne sont jamais dans l'image** : seul `.env` (sur le VPS) les contient.
+- `app` : image minimale, utilisateur non root, système de fichiers en lecture seule, capabilities retirées, 512 Mo max.
+  **Aucun port publié** : seul Caddy est exposé.
+- `caddy` : TLS Let's Encrypt automatique, corps de requête limité à 8 Ko, transmission de l'IP réelle du client
+  (utilisée par la limitation de débit).
+- Test local sans domaine : `DOMAIN=http://localhost`, `HTTP_PORT=8080` dans `.env`.
+- Derrière votre propre proxy : `docker run -p 8000:8000 --env-file .env ghcr.io/tiemtore-dev/bt-url`. Ne mettez
+  `BT_URL_TRUST_PROXY=true` que si un proxy de confiance est **devant** le conteneur, sinon la limitation par IP peut
+  être contournée.
+
+## Données collectées (sans modèle)
+
+Indépendamment du modèle, chaque analyse d'un hôte **public** collecte et affiche : DNS (TTL, enregistrements A/AAAA/MX,
+IP), TLS (certificat, durée de validité), enregistrement du domaine via RDAP/WHOIS (âge, expiration, serveurs de noms),
+réseau (latence TCP, pays de l'IP via un service GeoIP tiers) et forme de l'URL — chacune avec sa signification.
+Désactivable : `BT_URL_COLLECT=false`. Les hôtes non publics ne sont jamais contactés.
 
 ## Sécurité
 
@@ -120,7 +140,7 @@ Le code d'intégration est conservé pour les tests : `pip install -e ".[ml]"` p
 ## Tests
 
 ```bash
-python -m pytest        # 143 tests, hors réseau
+python -m pytest        # 148 tests, hors réseau
 ```
 
 ## Limites connues

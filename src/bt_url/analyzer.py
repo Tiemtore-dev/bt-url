@@ -76,13 +76,20 @@ class URLAnalyzer:
                 results.append(out)
         return results
 
-    def _predict_ml(self, url: str) -> Optional[MLResult]:
+    @staticmethod
+    def _collect(url: str) -> dict:
+        """Données de la cible : DNS, TLS, RDAP/WHOIS, réseau/GeoIP, forme de l'URL (I/O bloquantes)."""
+        from bt_url.ml.features import collect_all_features
+
+        return collect_all_features(url)
+
+    def _predict_ml(self, analyzed: str, collected: dict) -> Optional[MLResult]:
         loader = self._get_ml()
         if loader is None:
             return None
-        from bt_url.ml.features import collect_all_features
-
-        features = collect_all_features(lexical.strip_www(url))
+        model_url = lexical.strip_www(analyzed)
+        # Le modèle voit l'URL sans « www. » ; si elle diffère, on recollecte pour cette forme.
+        features = collected if model_url == analyzed and collected else self._collect(model_url)
         return loader.predict(features) if features else None
 
     async def analyze(self, url: str, use_ml: bool = True, follow_redirects: bool = True) -> dict:
@@ -124,11 +131,12 @@ class URLAnalyzer:
         result["typosquatting"] = {"detected": bool(typo), "matches": typo[:5]}
         result["embedded_base64"] = b64
 
-        # TI en parallèle (+ ML dans un thread : il fait des I/O bloquantes)
-        ml_task = None
-        if use_ml and self.settings.ml_enabled and public and await netguard.host_is_public(analyzed_host):
-            ml_task = asyncio.get_running_loop().run_in_executor(None, self._predict_ml, analyzed)
-        ssl_task = (asyncio.get_running_loop().run_in_executor(None, check_ssl, analyzed_host)
+        # TI en parallèle ; collecte des données de la cible dans un thread (I/O bloquantes)
+        loop = asyncio.get_running_loop()
+        target_public = public and await netguard.host_is_public(analyzed_host)
+        collect_task = (loop.run_in_executor(None, self._collect, analyzed)
+                        if self.settings.collect_details and target_public else None)
+        ssl_task = (loop.run_in_executor(None, check_ssl, analyzed_host)
                     if public and analyzed.startswith("https://") else None)
         redirect_task = (netguard.follow_redirects(analyzed)
                          if follow_redirects and public else None)
@@ -141,19 +149,33 @@ class URLAnalyzer:
             for s in sources
         ]
 
-        ml: Optional[MLResult] = None
-        if ml_task is not None:
+        collected: dict = {}
+        if collect_task is not None:
             try:
-                ml = await ml_task
+                collected = await collect_task
+            except Exception as e:
+                notes.append(f"Collecte des données en échec : {type(e).__name__}: {e}")
+        result["collected"] = (
+            {"available": True, "url": analyzed, "host": analyzed_host,
+             "features": describe_features(collected)} if collected else
+            {"available": False, "reason": ("disabled" if not self.settings.collect_details
+                                            else "non_public" if not target_public else "failed")})
+
+        ml: Optional[MLResult] = None
+        ml_attempted = bool(use_ml and self.settings.ml_enabled and target_public)
+        if ml_attempted:
+            try:
+                ml = await loop.run_in_executor(None, self._predict_ml, analyzed, collected)
             except Exception as e:
                 notes.append(f"ML en échec : {type(e).__name__}: {e}")
-        result["ml"] = ({"enabled": True, "score": ml.score, "label": ml.label,
-                         "confidence": ml.confidence, "threshold": ml.threshold,
-                         "input_url": lexical.strip_www(analyzed),
-                         "features": describe_features(ml.features)}
-                        if ml else {"enabled": False, "status": "training"}
-                        if not self.settings.ml_enabled
-                        else {"enabled": bool(ml_task is not None), "available": False})
+        if ml:
+            result["ml"] = {"enabled": True, "score": ml.score, "label": ml.label,
+                            "confidence": ml.confidence, "threshold": ml.threshold,
+                            "input_url": lexical.strip_www(analyzed)}
+        elif not self.settings.ml_enabled:
+            result["ml"] = {"enabled": False, "status": "training"}
+        else:
+            result["ml"] = {"enabled": ml_attempted, "available": False}
         if ssl_task is not None:
             result["ssl"] = await ssl_task
         if redirect_task is not None:

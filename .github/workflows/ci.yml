@@ -43,3 +43,52 @@ jobs:
         run: |
           cp .env.example .env
           DOMAIN=localhost docker compose config -q
+
+  compose-e2e:
+    # Déploiement complet : app + Caddy, comme sur le VPS (HTTP local, ports 8080/8443)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Démarrage du compose
+        run: |
+          cat > .env <<EOF
+          DOMAIN=http://localhost
+          HTTP_PORT=8080
+          HTTPS_PORT=8443
+          BT_URL_RATE_PER_MIN=2
+          EOF
+          docker compose up -d --build
+          for i in $(seq 1 60); do curl -sf localhost:8080/health && break; sleep 1; done
+      - name: Santé, page, en-têtes
+        run: |
+          curl -sf localhost:8080/health
+          curl -sf localhost:8080/api/status | jq -e '.ml == "training"'
+          curl -sf localhost:8080/ | grep -q "bt-url"
+          curl -sI localhost:8080/ | grep -i "content-security-policy"
+          docker compose ps
+      - name: L'application n'est pas exposée directement
+        run: |
+          ! curl -sf --max-time 3 localhost:8000/health
+      - name: Données collectées (réseau réel, sans modèle)
+        run: |
+          curl -sf --max-time 90 -X POST localhost:8080/api/analyze -H 'content-type: application/json' \
+            -d '{"url":"https://example.com/"}' | tee /tmp/r.json | jq '{verdict: .risk.verdict, ml, collected: (.collected.features | length)}'
+          jq -e '.collected.available == true and (.collected.features | length) == 25 and .ml.status == "training"' /tmp/r.json
+      - name: Limitation par IP non contournable via X-Forwarded-For falsifié
+        run: |
+          codes=""
+          for i in 1 2 3 4; do
+            codes="$codes $(curl -s -o /dev/null -w '%{http_code}' --max-time 90 -X POST localhost:8080/api/analyze \
+              -H 'content-type: application/json' -H "X-Forwarded-For: 10.9.9.$i" \
+              -d "{\"url\":\"https://example.org/p$i\"}")"
+          done
+          echo "codes:$codes"
+          # 1 analyse déjà faite plus haut (example.com) + limite 2/min => la 2e passe, les suivantes sont refusées
+          echo "$codes" | grep -q 429
+      - name: Journaux
+        if: always()
+        run: docker compose logs --tail=40
+      - name: Arrêt
+        if: always()
+        run: docker compose down -v
+

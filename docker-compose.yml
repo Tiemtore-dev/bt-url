@@ -1,9 +1,10 @@
-# Déploiement VPS : `cp .env.example .env`, renseigner DOMAIN + clés API, puis `docker compose up -d --build`
+# Déploiement VPS : `cp .env.example .env`, renseigner DOMAIN + clés API, puis `docker compose pull && docker compose up -d`
+# (l'image est publiée par la CI sur ghcr.io ; `docker compose up -d --build` reconstruit depuis les sources).
 # HTTPS automatique (Let's Encrypt) via Caddy : DOMAIN doit pointer vers le VPS (ports 80 et 443 ouverts).
 services:
   app:
     build: .
-    image: bt-url:latest
+    image: ${BT_URL_IMAGE:-ghcr.io/tiemtore-dev/bt-url:latest}
     restart: unless-stopped
     env_file: .env
     environment:
@@ -31,8 +32,8 @@ services:
       app:
         condition: service_healthy
     ports:
-      - "80:80"
-      - "443:443"
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
     environment:
       DOMAIN: ${DOMAIN:?Renseigner DOMAIN dans .env}
     volumes:

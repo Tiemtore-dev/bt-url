@@ -31,7 +31,7 @@
       </div>
       <p id="hint" class="hint">
         Le service interroge des bases de menaces tierces (VirusTotal, Google Safe Browsing, abuse.ch…) et
-        contacte le site cible (DNS, TLS) pour collecter les données du modèle. Ne saisissez pas d'URL contenant
+        contacte le site cible (DNS, TLS) ainsi que des services publics (RDAP, GeoIP) pour collecter ses données. Ne saisissez pas d'URL contenant
         des informations personnelles ou des jetons.
       </p>
       <div class="examples" aria-label="Exemples">
@@ -78,13 +78,17 @@
         </table></div>
       </article>
 
+      <article class="card" id="collected-card">
+        <h3>Données collectées sur la cible</h3>
+        <p class="hint">Informations relevées en direct sur le site : DNS, certificat TLS, enregistrement du domaine
+          (RDAP/WHOIS), réseau, forme de l'URL. « Non disponible » signale une valeur vraisemblablement non obtenue
+          (serveur injoignable, RDAP ou GeoIP indisponible).</p>
+        <div id="collected"></div>
+      </article>
+
       <article class="card" id="ml-card">
         <h3>Modèle d'apprentissage automatique <span class="pill v-unknown">en cours d'entraînement</span></h3>
         <div id="ml-summary"></div>
-        <h4>Données collectées et fournies au modèle</h4>
-        <p class="hint">Les 25 caractéristiques (features) calculées sur cette URL. « Non disponible » signale une valeur
-          vraisemblablement non collectée (DNS, RDAP ou GeoIP injoignable) : le modèle la reçoit alors à 0.</p>
-        <div id="features"></div>
       </article>
 
       <article class="card">

@@ -44,6 +44,9 @@ class Settings:
 
     vt_min_engines: int = field(default_factory=lambda: _int("VT_MIN_ENGINES", 3))
 
+    # Collecte des données de la cible (DNS, TLS, RDAP, GeoIP…) affichées dans la page, indépendante du modèle.
+    collect_details: bool = field(default_factory=lambda: _bool("BT_URL_COLLECT", True))
+
     # Le modèle ML est en cours d'entraînement : désactivé par défaut, aucun modèle n'est livré.
     # Pour tester un modèle local : BT_URL_ML_ENABLED=true + chemin + SHA256 (obligatoire).
     ml_enabled: bool = field(default_factory=lambda: _bool("BT_URL_ML_ENABLED", False))

@@ -1,10 +1,10 @@
-# Déploiement VPS : `cp .env.example .env`, renseigner DOMAIN + clés API, puis `docker compose pull && docker compose up -d`
-# (l'image est publiée par la CI sur ghcr.io ; `docker compose up -d --build` reconstruit depuis les sources).
+# Déploiement VPS : git clone, `cp .env.example .env`, renseigner DOMAIN + clés API, puis `./deploy.sh`
+# (équivaut à `docker compose up -d --build` : l'image est construite sur place depuis les sources).
 # HTTPS automatique (Let's Encrypt) via Caddy : DOMAIN doit pointer vers le VPS (ports 80 et 443 ouverts).
 services:
   app:
     build: .
-    image: ${BT_URL_IMAGE:-ghcr.io/tiemtore-dev/bt-url:latest}
+    image: bt-url:local
     restart: unless-stopped
     env_file: .env
     environment:

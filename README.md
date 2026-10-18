@@ -80,35 +80,28 @@ Page : aucun script/style en ligne, CSP stricte (`default-src 'none'`), DOM cons
 
 ## Déploiement sur un VPS (Docker)
 
-L'image est construite et publiée automatiquement par la CI sur `ghcr.io/tiemtore-dev/bt-url` (workflow *Publish image*,
-linux/amd64 + arm64). Tant que le dépôt est privé, l'image l'est aussi. Le VPS n'a besoin que de **trois fichiers**
-(`docker-compose.yml`, `Caddyfile`, `.env`) : pas de code source, pas de build.
-
-Prérequis : Docker + plugin Compose, un nom de domaine pointant vers le VPS, ports 80 et 443 ouverts.
+Prérequis : Docker + plugin Compose sur le VPS, un nom de domaine dont l'enregistrement DNS (type A) pointe vers lui,
+ports 80 et 443 ouverts.
 
 ```bash
-# 1) une seule fois : autoriser le VPS à tirer l'image privée (PAT GitHub avec le droit read:packages)
-echo "$GHCR_TOKEN" | docker login ghcr.io -u Tiemtore-dev --password-stdin
-
-# 2) récupérer les fichiers de déploiement (scp, ou git clone) puis configurer
-cp .env.example .env && nano .env          # DOMAIN + clés API
-
-# 3) déployer
-docker compose pull && docker compose up -d
-docker compose logs -f app
+git clone https://github.com/Tiemtore-dev/bt-url.git && cd bt-url
+cp .env.example .env && nano .env      # DOMAIN + clés API
+./deploy.sh                            # construit l'image sur place et démarre (équivaut à docker compose up -d --build)
 ```
 
-Mise à jour : `docker compose pull && docker compose up -d`. Alternative sans registre : `docker compose up -d --build`
-depuis un clone du dépôt.
+Mise à jour : `git pull && ./deploy.sh`. Journaux : `docker compose logs -f app`.
 
-- **Réglages non secrets** (limites de débit, cache, quotas…) : intégrés à l'image avec des valeurs par défaut ;
-  surchargeables dans `.env`. **Les clés API ne sont jamais dans l'image** : seul `.env` (sur le VPS) les contient.
+Le dépôt étant privé, le `git clone` demande des identifiants : utilisez un jeton GitHub (`git clone https://<jeton>@github.com/…`),
+`gh auth login`, ou une clé de déploiement SSH. Rendre le dépôt public supprime cette étape.
+
+- **Réglages non secrets** (limites de débit, cache, quotas…) : valeurs par défaut intégrées à l'image ; surchargeables
+  dans `.env`. **Les clés API ne sont jamais dans l'image** : seul `.env` (sur le VPS, ignoré par git) les contient.
 - `app` : image minimale, utilisateur non root, système de fichiers en lecture seule, capabilities retirées, 512 Mo max.
   **Aucun port publié** : seul Caddy est exposé.
 - `caddy` : TLS Let's Encrypt automatique, corps de requête limité à 8 Ko, transmission de l'IP réelle du client
   (utilisée par la limitation de débit).
-- Test local sans domaine : `DOMAIN=http://localhost`, `HTTP_PORT=8080` dans `.env`.
-- Derrière votre propre proxy : `docker run -p 8000:8000 --env-file .env ghcr.io/tiemtore-dev/bt-url`. Ne mettez
+- Test local sans domaine : `DOMAIN=http://localhost` et `HTTP_PORT=8080` dans `.env`.
+- Derrière votre propre proxy : `docker build -t bt-url . && docker run -p 8000:8000 --env-file .env bt-url`. Ne mettez
   `BT_URL_TRUST_PROXY=true` que si un proxy de confiance est **devant** le conteneur, sinon la limitation par IP peut
   être contournée.
 

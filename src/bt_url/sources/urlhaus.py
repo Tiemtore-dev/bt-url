@@ -23,7 +23,10 @@ class URLhausSource(BaseSource):
         if error:
             return self._error("Clé ABUSECH_API_KEY invalide" if status in (401, 403) else error, started)
         elapsed = int((time.time() - started) * 1000)
-        if data.get("query_status") != "is_listed":
+        # L'API renvoie « ok » (ou « is_listed ») avec les champs threat/url_status quand l'URL est listée.
+        listed = data.get("query_status") in ("ok", "is_listed") and bool(
+            data.get("threat") or data.get("url_status"))
+        if not listed:
             return SourceResult(self.name, verdict="CLEAN", detections=data.get("query_status"),
                                 response_time_ms=elapsed)
         return SourceResult(

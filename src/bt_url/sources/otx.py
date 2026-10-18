@@ -1,6 +1,7 @@
 """AlienVault OTX — pulses communautaires (indicatif, non autoritaire)."""
 
 import time
+from urllib.parse import quote
 
 from bt_url.models import SourceResult
 from bt_url.sources.base import BaseSource
@@ -22,7 +23,7 @@ class OTXSource(BaseSource):
     async def check_url(self, url: str) -> SourceResult:
         started = time.time()
         data, status, error = await self._request(
-            "GET", f"https://otx.alienvault.com/api/v1/indicators/url/{url}/general",
+            "GET", f"https://otx.alienvault.com/api/v1/indicators/url/{quote(url, safe='')}/general",
             headers={"X-OTX-API-KEY": self._key})
         if error:
             return self._error(error, started)

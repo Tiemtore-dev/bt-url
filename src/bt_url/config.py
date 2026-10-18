@@ -45,7 +45,8 @@ class Settings:
     virustotal_key: str = field(default_factory=lambda: _env("VIRUSTOTAL_API_KEY"))
     gsb_key: str = field(default_factory=lambda: _env("GOOGLE_SAFEBROWSING_API_KEY"))
     otx_key: str = field(default_factory=lambda: _env("OTX_API_KEY"))
-    abusech_key: str = field(default_factory=lambda: _env("ABUSECH_API_KEY"))
+    abusech_key: str = field(default_factory=lambda: (
+        _env("ABUSECH_API_KEY") or _env("URLHAUS_API_KEY") or _env("THREATFOX_API_KEY")))
     phishtank_key: str = field(default_factory=lambda: _env("PHISHTANK_API_KEY"))
 
     vt_min_engines: int = field(default_factory=lambda: _int("VT_MIN_ENGINES", 3))

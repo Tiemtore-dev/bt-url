@@ -53,12 +53,14 @@ class BaseSource(ABC):
                        params: Optional[dict] = None) -> tuple[Optional[dict], int, Optional[str]]:
         """Retourne (json, status, erreur). 404 n'est pas retenté."""
         await _RateLimiter.wait(self.name, self.rate_per_minute)
+        # Brotli n'est pas géré sans dépendance optionnelle : on ne l'annonce pas (cf. OTX).
+        headers = {"Accept-Encoding": "gzip, deflate", **(headers or {})}
         status, error = 0, None
         timeout = aiohttp.ClientTimeout(total=self.timeout, connect=min(self.timeout, 5))
         for attempt in range(1, _MAX_RETRIES + 1):
             try:
                 async with aiohttp.ClientSession(timeout=timeout) as session:
-                    async with session.request(method, url, headers=headers or {}, json=json_data,
+                    async with session.request(method, url, headers=headers, json=json_data,
                                                data=form_data, params=params) as resp:
                         status = resp.status
                         if 200 <= status < 300:

@@ -23,6 +23,29 @@ async def test_urlhaus_listed_is_authoritative_malicious():
     assert r.verdict == "MALICIOUS" and r.authoritative
 
 
+async def test_urlhaus_real_api_shape_ok_with_threat_is_malicious():
+    """Réponse réelle observée : query_status='ok' + threat/url_status pour une URL listée."""
+    data = {"query_status": "ok", "url_status": "online", "threat": "malware_download", "tags": None}
+    r = await fake(URLhausSource("k"), data).check_url("http://x")
+    assert r.verdict == "MALICIOUS" and r.authoritative
+
+
+async def test_urlhaus_ok_without_threat_is_not_listed():
+    assert (await fake(URLhausSource("k"), {"query_status": "ok"}).check_url("http://x")).verdict == "CLEAN"
+
+
+async def test_otx_url_is_percent_encoded_in_path():
+    seen = []
+    s = OTXSource("k")
+
+    async def _request(method, url, **k):
+        seen.append(url)
+        return {"pulse_info": {"count": 0}}, 200, None
+    s._request = _request
+    await s.check_url("http://a.com/p?x=1&y=2")
+    assert seen[0].endswith("/url/http%3A%2F%2Fa.com%2Fp%3Fx%3D1%26y%3D2/general")
+
+
 async def test_urlhaus_not_listed_is_clean():
     r = await fake(URLhausSource("k"), {"query_status": "no_results"}).check_url("http://x")
     assert r.verdict == "CLEAN" and not r.authoritative

@@ -9,6 +9,7 @@ from typing import Optional
 
 from bt_url import __version__, lexical, netguard
 from bt_url.config import Settings, get_settings
+from bt_url.ml.catalog import describe_features
 from bt_url.models import VERDICT_SEVERITY, MLResult, SourceResult
 from bt_url.scoring import assess_risk, structural_score
 from bt_url.sources import get_enabled_sources
@@ -81,7 +82,7 @@ class URLAnalyzer:
             return None
         from bt_url.ml.features import collect_all_features
 
-        features = collect_all_features(url)
+        features = collect_all_features(lexical.strip_www(url))
         return loader.predict(features) if features else None
 
     async def analyze(self, url: str, use_ml: bool = True, follow_redirects: bool = True) -> dict:
@@ -147,7 +148,9 @@ class URLAnalyzer:
             except Exception as e:
                 notes.append(f"ML en échec : {type(e).__name__}: {e}")
         result["ml"] = ({"enabled": True, "score": ml.score, "label": ml.label,
-                         "confidence": ml.confidence, "threshold": ml.threshold}
+                         "confidence": ml.confidence, "threshold": ml.threshold,
+                         "input_url": lexical.strip_www(analyzed),
+                         "features": describe_features(ml.features)}
                         if ml else {"enabled": bool(ml_task is not None), "available": False})
         if ssl_task is not None:
             result["ssl"] = await ssl_task

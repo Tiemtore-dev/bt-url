@@ -19,16 +19,23 @@ class _RateLimiter:
 
     _times: dict[str, list[float]] = {}
 
+    MAX_WAIT = 15.0  # au-delà, on renonce (la source passe en ERROR) plutôt que de bloquer l'analyse
+
     @classmethod
-    async def wait(cls, name: str, per_minute: int) -> None:
+    async def wait(cls, name: str, per_minute: int) -> bool:
+        """Retourne False si l'attente nécessaire dépasse MAX_WAIT (requête non effectuée)."""
         now = time.monotonic()
         window = [t for t in cls._times.get(name, []) if now - t < 60]
         if len(window) >= per_minute:
-            await asyncio.sleep(60 - (now - window[0]) + 0.1)
+            delay = 60 - (now - window[0]) + 0.1
+            if delay > cls.MAX_WAIT:
+                return False
+            await asyncio.sleep(delay)
             now = time.monotonic()
             window = [t for t in window if now - t < 60]
         window.append(now)
         cls._times[name] = window
+        return True
 
 
 class BaseSource(ABC):
@@ -52,7 +59,8 @@ class BaseSource(ABC):
                        json_data: Optional[dict] = None, form_data: Optional[dict] = None,
                        params: Optional[dict] = None) -> tuple[Optional[dict], int, Optional[str]]:
         """Retourne (json, status, erreur). 404 n'est pas retenté."""
-        await _RateLimiter.wait(self.name, self.rate_per_minute)
+        if not await _RateLimiter.wait(self.name, self.rate_per_minute):
+            return None, 429, "Quota local de la source atteint, réessayez dans une minute"
         # Brotli n'est pas géré sans dépendance optionnelle : on ne l'annonce pas (cf. OTX).
         headers = {"Accept-Encoding": "gzip, deflate", **(headers or {})}
         status, error = 0, None

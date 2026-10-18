@@ -28,8 +28,15 @@ class OTXSource(BaseSource):
         if error:
             return self._error(error, started)
         count = (data.get("pulse_info") or {}).get("count", 0)
-        verdict = "MALICIOUS" if count >= MALICIOUS_PULSES else "SUSPICIOUS" if count >= 1 else "CLEAN"
+        # Les domaines populaires (liste blanche OTX) accumulent des pulses sans être malveillants.
+        whitelisted = any(v.get("source") == "whitelist" for v in data.get("validation") or []
+                          if isinstance(v, dict))
+        if whitelisted:
+            verdict, detail = "CLEAN", f"{count} pulses (domaine en liste blanche OTX : ignorés)"
+        else:
+            verdict = "MALICIOUS" if count >= MALICIOUS_PULSES else "SUSPICIOUS" if count >= 1 else "CLEAN"
+            detail = f"{count} pulses"
         return SourceResult(self.name, verdict=verdict, authoritative=False,
-                            score=min(count / 10, 1.0), detections=f"{count} pulses",
-                            raw={"pulse_count": count},
+                            score=min(count / 10, 1.0), detections=detail,
+                            raw={"pulse_count": count, "whitelisted": whitelisted},
                             response_time_ms=int((time.time() - started) * 1000))

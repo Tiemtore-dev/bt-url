@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>bt-url — Analyse d'URL (phishing / malware)</title>
+  <meta name="description" content="Analysez une URL : Threat Intelligence et modèle d'apprentissage automatique, avec le détail de toutes les données collectées.">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#form">Aller au formulaire</a>
+
+  <header class="site-header">
+    <div class="wrap">
+      <h1>bt-url</h1>
+      <p class="tagline">Cette URL est-elle dangereuse ? Un verdict, et surtout <strong>les preuves</strong>.</p>
+      <p id="status" class="status" role="status">Chargement de l'état du service…</p>
+    </div>
+  </header>
+
+  <main class="wrap" id="main">
+    <form id="form" class="card form" novalidate>
+      <label for="url">URL à analyser</label>
+      <div class="row">
+        <input id="url" name="url" type="text" inputmode="url" autocomplete="off" autocapitalize="off"
+               spellcheck="false" maxlength="2048" required placeholder="https://exemple.com/connexion"
+               aria-describedby="hint">
+        <button id="submit" type="submit">Analyser</button>
+      </div>
+      <p id="hint" class="hint">
+        Le service interroge des bases de menaces tierces (VirusTotal, Google Safe Browsing, abuse.ch…) et
+        contacte le site cible (DNS, TLS) pour collecter les données du modèle. Ne saisissez pas d'URL contenant
+        des informations personnelles ou des jetons.
+      </p>
+      <div class="examples" aria-label="Exemples">
+        <span>Exemples :</span>
+        <button type="button" class="link" data-example="https://github.com">site légitime</button>
+        <button type="button" class="link" data-example="http://testsafebrowsing.appspot.com/s/malware.html">page de test Google (malware)</button>
+      </div>
+    </form>
+
+    <div id="loading" class="card loading" hidden role="status">
+      <div class="spinner" aria-hidden="true"></div>
+      <p>Analyse en cours… (sources de menaces, DNS, TLS, modèle) — jusqu'à une minute.</p>
+    </div>
+
+    <div id="error" class="card error" hidden role="alert" tabindex="-1"></div>
+
+    <section id="result" hidden aria-labelledby="result-title" tabindex="-1">
+      <h2 id="result-title" class="sr-only">Résultat de l'analyse</h2>
+
+      <article id="verdict" class="card verdict">
+        <div class="verdict-head">
+          <span id="verdict-badge" class="badge"></span>
+          <div class="score">
+            <div class="score-label">Score de risque</div>
+            <div id="score-meter" class="meter" role="meter" aria-valuemin="0" aria-valuemax="100">
+              <div id="score-fill" class="meter-fill"></div>
+            </div>
+            <div id="score-text" class="score-text"></div>
+          </div>
+        </div>
+        <p id="target" class="target"></p>
+        <h3>Pourquoi ce verdict ?</h3>
+        <ul id="reasons" class="reasons"></ul>
+        <p id="caveat" class="hint"></p>
+        <p id="cache-note" class="hint"></p>
+      </article>
+
+      <article class="card">
+        <h3>Sources de Threat Intelligence</h3>
+        <p class="hint">Une source <em>autoritaire</em> qui répond « malveillant » l'emporte sur tout le reste.</p>
+        <div class="table-wrap"><table id="sources">
+          <thead><tr><th scope="col">Source</th><th scope="col">Verdict</th><th scope="col">Détail</th><th scope="col">Temps</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </article>
+
+      <article class="card" id="ml-card">
+        <h3>Modèle d'apprentissage automatique</h3>
+        <div id="ml-summary"></div>
+        <h4>Données collectées et fournies au modèle</h4>
+        <p class="hint">Les 25 caractéristiques (features) calculées sur cette URL. « Non disponible » signale une valeur
+          vraisemblablement non collectée (DNS, RDAP ou GeoIP injoignable) : le modèle la reçoit alors à 0.</p>
+        <div id="features"></div>
+      </article>
+
+      <article class="card">
+        <h3>Analyse de la forme de l'URL</h3>
+        <dl id="url-analysis" class="kv"></dl>
+      </article>
+
+      <article class="card" id="net-card">
+        <h3>Certificat TLS et redirections</h3>
+        <dl id="net-analysis" class="kv"></dl>
+        <ol id="redirects" class="chain"></ol>
+      </article>
+
+      <article class="card">
+        <details>
+          <summary>Réponse JSON complète</summary>
+          <div class="row actions">
+            <button type="button" id="copy-json" class="secondary">Copier</button>
+            <button type="button" id="download-json" class="secondary">Télécharger</button>
+          </div>
+          <pre id="raw" tabindex="0"></pre>
+        </details>
+      </article>
+    </section>
+  </main>
+
+  <footer class="wrap site-footer">
+    <p>Un verdict « aucune menace » ne prouve pas qu'un site est sûr : les attaques récentes sont souvent inconnues des bases.
+       Le modèle seul ne confirme jamais une URL malveillante. Projet open source <strong>bt-url</strong>.</p>
+  </footer>
+</body>
+</html>

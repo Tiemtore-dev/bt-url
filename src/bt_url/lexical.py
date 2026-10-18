@@ -3,7 +3,7 @@
 import math
 import re
 from collections import Counter
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit, urlunsplit
 
 URL_SHORTENERS = {
     "bit.ly", "tinyurl.com", "t.co", "goo.gl", "ow.ly", "is.gd",
@@ -38,13 +38,42 @@ def normalize_url(url: str) -> str:
     return url.split("#", 1)[0]
 
 
+_HOST = re.compile(r"^(?:[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?\.)*[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?\.?$")
+
+
 def is_valid_url(url: str) -> bool:
-    """Seules les URLs http(s) avec un hôte sont acceptées."""
+    """Seules les URLs http(s) avec un hôte syntaxiquement valide et un port numérique sont acceptées."""
     try:
         parsed = urlparse(url)
-        return parsed.scheme in ("http", "https") and bool(parsed.hostname)
+        host = parsed.hostname
+        parsed.port  # lève ValueError si le port n'est pas numérique (ex. « javascript:alert(1) »)
     except ValueError:
         return False
+    if parsed.scheme not in ("http", "https") or not host:
+        return False
+    if ":" in host:  # IPv6 littérale
+        import ipaddress
+        try:
+            ipaddress.IPv6Address(host)
+            return True
+        except ValueError:
+            return False
+    return bool(_HOST.match(host.lower())) and len(host) <= 253
+
+
+def strip_www(url: str) -> str:
+    """
+    Retire un « www. » initial de l'hôte. Le modèle a un biais d'entraînement : « www. » compte comme
+    sous-domaine/point supplémentaire et fait grimper le score de sites légitimes
+    (mesuré : wikipedia.org 0,00 -> 0,89 avec www.). Sémantiquement, www.X et X sont le même site.
+    """
+    parts = urlsplit(url)
+    host = parts.netloc
+    userinfo, sep, hostport = host.rpartition("@")
+    if hostport.lower().startswith("www.") and "." in hostport[4:]:
+        host = f"{userinfo}{sep}{hostport[4:]}"
+        return urlunsplit((parts.scheme, host, parts.path, parts.query, parts.fragment))
+    return url
 
 
 def get_hostname(url: str) -> str:

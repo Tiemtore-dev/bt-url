@@ -11,6 +11,8 @@ def test_normalize_adds_scheme_and_strips_fragment():
 @pytest.mark.parametrize("u,ok", [
     ("https://example.com:8080/p?q=1", True), ("http://a.b", True),
     ("ftp://x.com", False), ("javascript:alert(1)", False), ("https://", False),
+    ("https://javascript:alert(1)", False), ("https://exa mple.com", False), ("https://a.com:99999", False),
+    ("https://[::1]/x", True), ("https://[zzz]/x", False), ("https://-bad.com", False),
 ])
 def test_is_valid_url(u, ok):
     assert lx.is_valid_url(u) is ok
@@ -54,3 +56,16 @@ def test_base64_payload_decoded():
 
 def test_base64_ignores_random_text():
     assert lx.extract_base64_payloads("https://example.com/some/normal/path") == []
+
+
+@pytest.mark.parametrize("src,expected", [
+    ("https://www.wikipedia.org/a?b=1", "https://wikipedia.org/a?b=1"),
+    ("https://WWW.Example.com", "https://Example.com"),
+    ("https://www.com", "https://www.com"),            # pas de domaine restant
+    ("https://wwwx.example.com", "https://wwwx.example.com"),
+    ("https://sub.www.example.com", "https://sub.www.example.com"),
+    ("https://u:p@www.example.com:8080/x", "https://u:p@example.com:8080/x"),
+    ("https://example.com", "https://example.com"),
+])
+def test_strip_www(src, expected):
+    assert lx.strip_www(src) == expected

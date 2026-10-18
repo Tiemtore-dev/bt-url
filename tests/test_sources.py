@@ -122,3 +122,23 @@ async def test_virustotal_uses_existing_report_without_submitting():
     vt._request = _request
     r = await vt.check_url("https://evil.test/?a=1&b=2")
     assert r.verdict == "MALICIOUS" and r.authoritative and calls == ["GET"]
+
+
+async def test_local_quota_wait_is_capped_instead_of_blocking(monkeypatch):
+    import time as _t
+    from bt_url.sources.base import _RateLimiter
+    monkeypatch.setattr(_RateLimiter, "_times", {"VirusTotal": [_t.monotonic()] * 4})
+    started = _t.monotonic()
+    data, status, err = await VirusTotalSource("k")._request("GET", "https://unused.invalid")
+    assert data is None and "Quota local" in err and _t.monotonic() - started < 1
+
+
+async def test_otx_whitelisted_domain_pulses_are_ignored():
+    data = {"pulse_info": {"count": 50}, "validation": [{"source": "whitelist", "name": "Whitelisted domain"}]}
+    r = await fake(OTXSource("k"), data).check_url("https://github.com")
+    assert r.verdict == "CLEAN" and "liste blanche" in r.detections
+
+
+async def test_otx_pulses_without_whitelist_still_count():
+    r = await fake(OTXSource("k"), {"pulse_info": {"count": 50}, "validation": []}).check_url("http://x")
+    assert r.verdict == "MALICIOUS" and not r.authoritative

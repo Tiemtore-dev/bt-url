@@ -1,0 +1,101 @@
+"""Parsing des sources TI avec réponses simulées (aucun réseau, aucune clé)."""
+
+import pytest
+
+from bt_url.sources.otx import OTXSource
+from bt_url.sources.phishtank import PhishTankSource
+from bt_url.sources.safebrowsing import GoogleSafeBrowsingSource
+from bt_url.sources.threatfox import ThreatFoxSource
+from bt_url.sources.urlhaus import URLhausSource
+from bt_url.sources.virustotal import VirusTotalSource, verdict_from_stats
+
+
+def fake(source, data=None, status=200, error=None):
+    async def _request(*a, **k):
+        return data, status, error
+    source._request = _request
+    return source
+
+
+async def test_urlhaus_listed_is_authoritative_malicious():
+    r = await fake(URLhausSource("k"), {"query_status": "is_listed", "threat": "malware_download"}
+                   ).check_url("http://x")
+    assert r.verdict == "MALICIOUS" and r.authoritative
+
+
+async def test_urlhaus_not_listed_is_clean():
+    r = await fake(URLhausSource("k"), {"query_status": "no_results"}).check_url("http://x")
+    assert r.verdict == "CLEAN" and not r.authoritative
+
+
+async def test_urlhaus_bad_key_is_error_not_clean():
+    r = await fake(URLhausSource("k"), None, 401, "HTTP 401").check_url("http://x")
+    assert r.verdict == "ERROR" and "ABUSECH_API_KEY" in r.error
+
+
+async def test_phishtank_verified_valid_is_authoritative():
+    data = {"results": {"in_database": "true", "verified": "true", "valid": "true", "phish_id": "1"}}
+    r = await fake(PhishTankSource(), data).check_url("http://x")
+    assert r.verdict == "MALICIOUS" and r.authoritative
+
+
+async def test_phishtank_unverified_is_only_suspicious():
+    data = {"results": {"in_database": True, "verified": False, "valid": True}}
+    r = await fake(PhishTankSource(), data).check_url("http://x")
+    assert r.verdict == "SUSPICIOUS" and not r.authoritative
+
+
+async def test_phishtank_invalidated_entry_is_clean():
+    data = {"results": {"in_database": "true", "verified": "true", "valid": "false"}}
+    assert (await fake(PhishTankSource(), data).check_url("http://x")).verdict == "CLEAN"
+
+
+async def test_gsb_match_is_authoritative():
+    data = {"matches": [{"threatType": "SOCIAL_ENGINEERING"}]}
+    r = await fake(GoogleSafeBrowsingSource("k"), data).check_url("http://x")
+    assert r.verdict == "MALICIOUS" and r.authoritative and "SOCIAL_ENGINEERING" in r.detections
+
+
+async def test_gsb_no_match_is_clean():
+    assert (await fake(GoogleSafeBrowsingSource("k"), {}).check_url("http://x")).verdict == "CLEAN"
+
+
+@pytest.mark.parametrize("conf,auth", [(90, True), (50, True), (30, False)])
+async def test_threatfox_authority_depends_on_confidence(conf, auth):
+    data = {"query_status": "ok", "data": [{"confidence_level": conf, "malware_printable": "Emotet"}]}
+    r = await fake(ThreatFoxSource("k"), data).check_url("http://x")
+    assert r.verdict == "MALICIOUS" and r.authoritative is auth
+
+
+async def test_threatfox_no_result_clean():
+    r = await fake(ThreatFoxSource("k"), {"query_status": "no_result", "data": "x"}).check_url("http://x")
+    assert r.verdict == "CLEAN"
+
+
+@pytest.mark.parametrize("count,verdict", [(0, "CLEAN"), (2, "SUSPICIOUS"), (9, "MALICIOUS")])
+async def test_otx_is_never_authoritative(count, verdict):
+    r = await fake(OTXSource("k"), {"pulse_info": {"count": count}}).check_url("http://x")
+    assert r.verdict == verdict and not r.authoritative
+
+
+@pytest.mark.parametrize("stats,expected", [
+    ({"malicious": 5, "harmless": 60}, ("MALICIOUS", True)),
+    ({"malicious": 3}, ("MALICIOUS", True)),
+    ({"malicious": 2, "harmless": 60}, ("SUSPICIOUS", False)),
+    ({"malicious": 0, "suspicious": 2}, ("SUSPICIOUS", False)),
+    ({"malicious": 0, "suspicious": 1, "harmless": 70}, ("CLEAN", False)),
+])
+def test_virustotal_consensus_threshold(stats, expected):
+    assert verdict_from_stats(stats, 3) == expected
+
+
+async def test_virustotal_uses_existing_report_without_submitting():
+    calls = []
+    vt = VirusTotalSource("k")
+
+    async def _request(method, url, **k):
+        calls.append(method)
+        return {"data": {"attributes": {"last_analysis_stats": {"malicious": 7, "harmless": 60}}}}, 200, None
+    vt._request = _request
+    r = await vt.check_url("https://evil.test/?a=1&b=2")
+    assert r.verdict == "MALICIOUS" and r.authoritative and calls == ["GET"]

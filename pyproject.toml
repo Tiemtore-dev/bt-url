@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bt-url"
+version = "0.1.0"
+description = "Analyse d'URL (phishing / malware) : Threat Intelligence + ML, avec verdict TI prioritaire"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = [
+    "aiohttp>=3.9",
+    "python-dotenv>=1.0",
+    "dnspython>=2.4",
+    "requests>=2.31",
+    "python-dateutil>=2.8",
+    "joblib>=1.3",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "scikit-learn>=1.8,<1.9",
+    "lightgbm>=4.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-asyncio>=0.21"]
+
+[project.scripts]
+bt-url = "bt_url.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"bt_url.ml" = ["best_model_meta.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = ["network: tests nécessitant un accès réseau (désactivés par défaut)"]
+addopts = "-m 'not network'"

@@ -124,8 +124,14 @@ function renderML(r) {
   clear(summary); clear(feats);
   const ml = r.ml;
   if (!ml || ml.score === undefined) {
-    summary.append(el("p", { class: "na", text: ml && ml.enabled === false
-      ? "Modèle non utilisé pour cette cible (hôte non public ou désactivé)." : "Modèle indisponible." }));
+    let msg = "Modèle indisponible.";
+    if (ml && ml.status === "training") {
+      msg = "Le modèle d'apprentissage automatique est en cours d'entraînement : il n'est pas utilisé pour l'instant. "
+        + "Le verdict repose sur les sources de Threat Intelligence et sur les indices de forme de l'URL.";
+    } else if (ml && ml.enabled === false) {
+      msg = "Modèle non utilisé pour cette cible (hôte non public).";
+    }
+    summary.append(el("p", { class: "na", text: msg }));
     return;
   }
   const labels = { MALICIOUS: "malveillante", SUSPICIOUS: "à surveiller", BENIGN: "bénigne" };
@@ -245,7 +251,7 @@ async function loadStatus() {
     const s = await (await fetch("/api/status")).json();
     const q = s.quota;
     $("status").textContent =
-      `${s.sources.length} source(s) de menaces · modèle ${s.ml_loaded ? "chargé" : "indisponible"} · ` +
+      `${s.sources.length} source(s) de menaces · modèle ${{ training: "en cours d'entraînement", loaded: "chargé" }[s.ml] || "indisponible"} · ` +
       `${s.limits.per_ip_per_minute} analyses/min par adresse · quota du jour : ${q.daily_remaining}/${q.daily_limit}`;
   } catch (_) {
     $("status").textContent = "État du service indisponible.";

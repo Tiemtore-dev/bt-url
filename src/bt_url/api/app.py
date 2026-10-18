@@ -112,10 +112,13 @@ def create_app(analyzer: Optional[URLAnalyzer] = None, settings: Optional[ApiSet
 
     @app.get("/api/status")
     async def status():
-        ml = getattr(analyzer, "_ml", None)
+        if not analyzer.settings.ml_enabled:
+            ml_status = "training"  # modèle en cours d'entraînement, non utilisé
+        else:
+            ml_status = "loaded" if getattr(analyzer, "_ml", None) is not None else "unavailable"
         return {
             "version": __version__,
-            "ml_loaded": ml is not None,
+            "ml": ml_status,
             "sources": [s.name for s in analyzer.sources],
             "limits": {"per_ip_per_minute": cfg.rate_per_ip_minute, "per_ip_per_hour": cfg.rate_per_ip_hour,
                        "cache_ttl_seconds": cfg.cache_ttl},

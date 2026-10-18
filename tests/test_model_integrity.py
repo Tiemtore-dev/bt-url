@@ -65,4 +65,23 @@ def test_build_engine_disabled_returns_none():
 def test_build_engine_refuses_tampered_model(tmp_path):
     from bt_url.config import Settings
     path, _ = write(tmp_path)
-    assert m.build_engine(Settings(model_path=path, model_sha256="0" * 64)) is None
+    assert m.build_engine(Settings(ml_enabled=True, model_path=path, model_sha256="0" * 64)) is None
+
+
+def test_ml_is_disabled_by_default_and_ships_no_model(monkeypatch):
+    from bt_url.config import Settings
+    for var in ("BT_URL_ML_ENABLED", "BT_URL_MODEL_PATH", "BT_URL_MODEL_URL", "BT_URL_MODEL_SHA256"):
+        monkeypatch.delenv(var, raising=False)
+    s = Settings()
+    assert s.ml_enabled is False and s.model_path == "" and s.model_url == "" and s.model_sha256 == ""
+    assert m.build_engine(s) is None
+
+
+def test_enabled_without_model_path_is_refused_not_crashing():
+    from bt_url.config import Settings
+    assert m.build_engine(Settings(ml_enabled=True, model_path="")) is None
+
+
+def test_enabled_with_missing_file_and_no_url_is_unavailable(tmp_path):
+    from bt_url.config import Settings
+    assert m.build_engine(Settings(ml_enabled=True, model_path=str(tmp_path / "absent.pkl"))) is None

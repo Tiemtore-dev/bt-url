@@ -100,3 +100,9 @@ def test_merge_keeps_most_severe_per_source():
         [SourceResult("A", verdict="CLEAN"), SourceResult("B", verdict="ERROR")],
         [SourceResult("A", verdict="SUSPICIOUS"), SourceResult("B", verdict="CLEAN")]])
     assert {s.source_name: s.verdict for s in merged} == {"A": "SUSPICIOUS", "B": "CLEAN"}
+
+
+async def test_ml_disabled_is_reported_as_training_and_verdict_uses_ti_only():
+    src = FakeSource("S", default=SourceResult("S", verdict="CLEAN"))
+    r = await analyzer([src]).analyze("http://127.0.0.1/x")
+    assert r["ml"] == {"enabled": False, "status": "training"}

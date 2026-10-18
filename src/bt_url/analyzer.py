@@ -151,7 +151,9 @@ class URLAnalyzer:
                          "confidence": ml.confidence, "threshold": ml.threshold,
                          "input_url": lexical.strip_www(analyzed),
                          "features": describe_features(ml.features)}
-                        if ml else {"enabled": bool(ml_task is not None), "available": False})
+                        if ml else {"enabled": False, "status": "training"}
+                        if not self.settings.ml_enabled
+                        else {"enabled": bool(ml_task is not None), "available": False})
         if ssl_task is not None:
             result["ssl"] = await ssl_task
         if redirect_task is not None:

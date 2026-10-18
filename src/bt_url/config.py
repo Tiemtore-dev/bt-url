@@ -10,13 +10,6 @@ for _candidate in (Path.cwd() / ".env", Path.home() / ".bt-url.env"):
     if _candidate.exists():
         load_dotenv(_candidate, override=False)
 
-# Modèle officiel v1.0.0 (SHA256 publié par la release GitHub).
-DEFAULT_MODEL_URL = (
-    "https://github.com/Tiemtore-dev/bt-knife/releases/download/v1.0.0/best_model_pipeline.pkl"
-)
-DEFAULT_MODEL_SHA256 = "1e902bbe7474fb61414a2c64fb492cb9674c4b911cc9936162b436fab31ed9f9"
-
-
 def _env(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()
 
@@ -51,11 +44,13 @@ class Settings:
 
     vt_min_engines: int = field(default_factory=lambda: _int("VT_MIN_ENGINES", 3))
 
-    ml_enabled: bool = field(default_factory=lambda: _bool("BT_URL_ML_ENABLED", True))
-    model_path: str = field(default_factory=lambda: _env(
-        "BT_URL_MODEL_PATH", str(Path.home() / ".cache" / "bt-url" / "best_model_pipeline.pkl")))
-    model_url: str = field(default_factory=lambda: _env("BT_URL_MODEL_URL", DEFAULT_MODEL_URL))
-    model_sha256: str = field(default_factory=lambda: _env("BT_URL_MODEL_SHA256", DEFAULT_MODEL_SHA256))
+    # Le modèle ML est en cours d'entraînement : désactivé par défaut, aucun modèle n'est livré.
+    # Pour tester un modèle local : BT_URL_ML_ENABLED=true + chemin + SHA256 (obligatoire).
+    ml_enabled: bool = field(default_factory=lambda: _bool("BT_URL_ML_ENABLED", False))
+    model_path: str = field(default_factory=lambda: _env("BT_URL_MODEL_PATH"))
+    model_meta_path: str = field(default_factory=lambda: _env("BT_URL_MODEL_META"))
+    model_url: str = field(default_factory=lambda: _env("BT_URL_MODEL_URL"))
+    model_sha256: str = field(default_factory=lambda: _env("BT_URL_MODEL_SHA256"))
     allow_unverified_model: bool = field(
         default_factory=lambda: _bool("BT_URL_ALLOW_UNVERIFIED_MODEL", False))
 

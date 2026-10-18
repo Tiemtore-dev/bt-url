@@ -4,12 +4,13 @@ import os
 
 import pytest
 
-from bt_url.config import DEFAULT_MODEL_SHA256
 from bt_url.ml.model import ModelLoader
 
 PATH = os.environ.get("BT_URL_MODEL_PATH", "")
+META = os.environ.get("BT_URL_MODEL_META", "")
+SHA = os.environ.get("BT_URL_MODEL_SHA256", "")
 pytestmark = [pytest.mark.network,
-              pytest.mark.skipif(not os.path.exists(PATH), reason="BT_URL_MODEL_PATH absent")]
+              pytest.mark.skipif(not os.path.exists(PATH), reason="BT_URL_MODEL_PATH absent (modèle non livré)")]
 
 BENIGN = {"ttl_A": 300, "ttl_MX": 3600, "nb_A_records": 2, "nb_ips": 2, "average_rtt": 20.0,
           "tls_cert_count": 1, "cert_valid_len_days": 90, "domain_age_days": 9000,
@@ -21,16 +22,16 @@ BENIGN = {"ttl_A": 300, "ttl_MX": 3600, "nb_A_records": 2, "nb_ips": 2, "average
 
 
 def test_real_model_loads_and_predicts_in_range():
-    loader = ModelLoader(PATH)
-    loader.load(DEFAULT_MODEL_SHA256)
+    loader = ModelLoader(PATH, META)
+    loader.load(SHA)
     r = loader.predict(BENIGN)
     assert 0.0 <= r.score <= 1.0 and r.label in ("BENIGN", "SUSPICIOUS", "MALICIOUS")
     assert r.label == "BENIGN"
 
 
 def test_real_model_flags_a_throwaway_young_domain_as_riskier():
-    loader = ModelLoader(PATH)
-    loader.load(DEFAULT_MODEL_SHA256)
+    loader = ModelLoader(PATH, META)
+    loader.load(SHA)
     risky = {**BENIGN, "domain_age_days": 2, "domain_remaining_days": 300, "tls_cert_count": 0,
              "cert_valid_len_days": 0, "tld": "xyz", "url_length": 90, "url_entropy": 4.6,
              "count_dots": 5, "num_subdomains": 4, "has_MX": 0, "nb_nameservers": 2}

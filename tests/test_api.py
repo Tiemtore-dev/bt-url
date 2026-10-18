@@ -47,6 +47,7 @@ def test_health_and_index_and_status():
     assert r.status_code == 200 and "bt-url" in r.text
     s = c.get("/api/status").json()
     assert s["quota"]["daily_limit"] == 100 and "sources" in s
+    assert s["ml"] == "training" and "ml_loaded" not in s
 
 
 def test_static_assets_served():

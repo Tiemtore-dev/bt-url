@@ -1,0 +1,8 @@
+{$DOMAIN} {
+	encode zstd gzip
+	# Taille de corps limitée : l'API n'attend qu'une URL
+	request_body {
+		max_size 8KB
+	}
+	reverse_proxy app:8000
+}

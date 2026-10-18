@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -21,3 +21,23 @@ jobs:
         run: python -m pytest -v
       - name: CLI
         run: bt-url --help
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build de l'image
+        run: docker build -t bt-url:ci .
+      - name: Démarrage et vérifications
+        run: |
+          docker run -d --name btu -p 8000:8000 bt-url:ci
+          for i in $(seq 1 30); do curl -sf localhost:8000/health && break; sleep 1; done
+          curl -sf localhost:8000/health
+          curl -sf localhost:8000/api/status | tee /dev/stderr | grep -q '"ml":"training"'
+          curl -sf localhost:8000/ | grep -q "bt-url"
+          curl -sf localhost:8000/static/app.js >/dev/null
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8000/api/analyze -H 'content-type: application/json' -d '{"url":"ftp://x"}')" = "422"
+          docker inspect --format '{{.State.Health.Status}}' btu
+          docker logs btu | tail -5
+      - name: Compose valide
+        run: DOMAIN=localhost docker compose config -q

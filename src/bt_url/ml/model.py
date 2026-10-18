@@ -14,9 +14,6 @@ from bt_url.models import MLResult
 
 log = logging.getLogger("bt_url.ml")
 
-META_PATH = Path(__file__).with_name("best_model_meta.json")
-
-
 class ModelIntegrityError(RuntimeError):
     """Le SHA256 du modèle ne correspond pas : il ne doit JAMAIS être chargé."""
 
@@ -65,7 +62,7 @@ def download_model(url: str, dest: str, expected_sha256: str, allow_unverified: 
 
 
 class ModelLoader:
-    def __init__(self, model_path: str, meta_path: str = str(META_PATH)):
+    def __init__(self, model_path: str, meta_path: str):
         self._model_path = model_path
         self._meta = json.loads(Path(meta_path).read_text(encoding="utf-8"))
         self._pipeline = None
@@ -109,18 +106,27 @@ class ModelLoader:
 
 
 def build_engine(settings: Settings) -> Optional[ModelLoader]:
-    """Prépare le modèle (téléchargement vérifié si absent). None si indisponible."""
+    """
+    Prépare le modèle s'il est activé ET configuré (chemin + métadonnées). None sinon.
+    Aucun modèle n'est livré avec le projet ni téléchargé par défaut.
+    """
     if not settings.ml_enabled:
+        return None
+    if not settings.model_path:
+        log.warning("BT_URL_ML_ENABLED=true mais BT_URL_MODEL_PATH est vide : ML désactivé")
         return None
     try:
         if not Path(settings.model_path).exists():
+            if not settings.model_url:
+                raise FileNotFoundError(settings.model_path)
             download_model(settings.model_url, settings.model_path,
                            settings.model_sha256, settings.allow_unverified_model)
-        loader = ModelLoader(settings.model_path)
+        meta = settings.model_meta_path or str(Path(settings.model_path).with_suffix(".meta.json"))
+        loader = ModelLoader(settings.model_path, meta)
         loader.load(settings.model_sha256, settings.allow_unverified_model)
         return loader
     except ModelIntegrityError as e:
         log.error("Modèle ML REFUSÉ : %s", e)
-    except Exception as e:  # réseau, fichier corrompu, incompatibilité sklearn…
+    except Exception as e:  # fichier absent/corrompu, incompatibilité de version…
         log.warning("Modèle ML indisponible : %s", e)
     return None

@@ -23,4 +23,11 @@ keys=$(grep -cE '^(VIRUSTOTAL|GOOGLE_SAFEBROWSING|OTX|ABUSECH|PHISHTANK)_API_KEY
 
 docker compose up -d --build
 docker compose ps
-echo "Déployé : https://$domain  (journaux : docker compose logs -f)"
+case "$domain" in
+  http://*|https://*) url="$domain";;
+  *) url="https://$domain";;
+esac
+port=$(sed -n 's/^HTTPS_PORT=\([0-9]*\).*/\1/p' .env | tail -1)
+case "$url" in http://*) port=$(sed -n 's/^HTTP_PORT=\([0-9]*\).*/\1/p' .env | tail -1);; esac
+[ -n "$port" ] && [ "$port" != 80 ] && [ "$port" != 443 ] && url="$url:$port"
+echo "Déployé : $url  (journaux : docker compose logs -f)"
